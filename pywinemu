@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+import colorama
+import pefile
+import sys
+
+from emulator import Emulator
+from version import Version
+
+
+class Program:
+    EXIT_SUCCESS = 0
+    EXIT_FAILURE = 1
+    PROGRAM_NAME = Version.get_project_name()
+    PROGRAM_VERSION = Version.get_version()
+
+    def __init__(self, args):
+        self.args = args
+        self.exe_to_emulate = None
+
+        self.printBanner()
+        self.parseArguments()
+        self.checkEXE(self.getEXEToEmulate())
+        self.emulateEXE(self.getEXEToEmulate(), self.getTotalMemorySize())
+
+        return Program.EXIT_SUCCESS
+
+    def checkEXE(self, exe):
+        self.exe = pefile.PE(exe)
+
+        self.exe_mz_signature = self.exe.DOS_HEADER.e_magic
+        if self.exe_mz_signature != 0x5A4D:
+            self.exitWithError("The EXE file has wrong MZ signature!")
+
+        self.exe_pe_signature = self.exe.NT_HEADERS.Signature
+        if self.exe_pe_signature != 0x4550:
+            self.exitWithError("The EXE file has wrong PE signature!")
+
+        self.exe_machine_type = self.exe.FILE_HEADER.Machine
+        if self.exe_machine_type != 0x14c:
+            self.exitWithError("The EXE file is not i386 EXE!")
+
+        self.exe_characteristics = self.exe.FILE_HEADER.Characteristics
+        if not (self.exe_characteristics ^ 0x02):
+            self.exitWithError("The EXE file is not executable!")
+
+    def emulateEXE(self, exe, total_memory_size):
+        self.exe = pefile.PE(exe)
+        self.emulation_total_memory_size = total_memory_size
+
+        self.exe_memory_image = self.exe.get_memory_mapped_image()
+        self.exe_image_base = self.exe.OPTIONAL_HEADER.ImageBase
+        self.exe_base_relocation = self.exe.OPTIONAL_HEADER.DATA_DIRECTORY[5].VirtualAddress
+        self.exe_base_relocation_size = self.exe.OPTIONAL_HEADER.DATA_DIRECTORY[5].Size
+
+        self.exe_entry_point = self.exe.OPTIONAL_HEADER.AddressOfEntryPoint
+        self.exe_code_size = self.exe.OPTIONAL_HEADER.SizeOfCode
+
+        self.emulator = Emulator(self.exe_memory_image, self.exe_image_base, self.exe_base_relocation, self.exe_base_relocation_size, self.emulation_total_memory_size)
+        self.emulator_result = self.emulator.emulate(self.exe_entry_point, self.exe_code_size)
+
+        if self.emulator_result == Emulator.EXIT_FAILURE:
+            self.exitWithError("The emulation of the EXE file failed!")
+
+    def exitWithError(self, msg):
+        self.printError(msg)
+        sys.exit(self.EXIT_FAILURE)
+
+    def getEXEToEmulate(self):
+        if self.exe_to_emulate is None:
+            self.exitWithError("The EXE to emulate is not set!")
+        else:
+            return self.exe_to_emulate
+
+    def getTotalMemorySize(self):
+        return self.total_memory_size
+
+    def getProgramArguments(self):
+        return self.args
+
+    def getBannerString(self):
+        return f"{self.PROGRAM_NAME} {self.PROGRAM_VERSION}"
+
+    def getTestDirectory(self):
+        return self.test_directory()
+
+    def parseArguments(self):
+        if len(self.args) != 3:
+            self.exitWithError("Wrong argument number!")
+        else:
+            self.setEXEToEmulate(self.args[1])
+            self.setTotalMemorySize(self.args[2])
+
+    def printBanner(self):
+        print(self.getBannerString())
+
+    def printError(self, msg):
+        colorama.init()
+        print(colorama.Fore.RED + "ERROR: " + colorama.Fore.RESET + msg)
+
+    def setEXEToEmulate(self, exe_path):
+        self.exe_to_emulate = exe_path
+
+    def setTotalMemorySize(self, total_memory_size):
+        self.total_memory_size = int(total_memory_size) * 1024 * 1024
+
+
+def main(args):
+    program = Program(args)
+    return program
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
