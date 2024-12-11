@@ -29,7 +29,7 @@ class Emulator:
             self.cpu_emulator.emu_start(entry_point, entry_point + exe_code_size)
         except UcError as e:
             colorama.init()
-            print(colorama.Fore.RED + "ERROR: " + colorama.Fore.RESET + f"{e}")
+            print(colorama.Fore.RED + f"ERROR: " + colorama.Fore.RESET + f"{e} (UcError no. {e.errno})")
             return Emulator.EXIT_FAILURE
         else:
             self.cpu_emulator.emu_stop()
